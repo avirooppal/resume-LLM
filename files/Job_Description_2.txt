@@ -1,0 +1,12 @@
+Title: Entry-Level Java Developer
+
+Requirements:
+- Java
+- Spring Boot
+- SQL
+- Git
+- Problem-solving skills
+
+Qualifications:
+- Bachelor's degree in Computer Science or Software Engineering
+- Internship or personal projects in backend development

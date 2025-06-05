@@ -1,0 +1,14 @@
+Title: Java Backend Developer
+
+Responsibilities:
+- Develop and maintain microservices in Java and Spring Boot
+- Collaborate on designing backend architectures
+- Write SQL queries and optimize database access
+
+Requirements:
+- Java
+- Spring Boot
+- REST APIs
+- SQL
+- Microservices
+- Bachelor's degree in CS or equivalent

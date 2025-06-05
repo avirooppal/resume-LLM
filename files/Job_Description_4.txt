@@ -1,0 +1,29 @@
+Title: Full Stack Developer (.NET / JavaScript / Linux)
+
+Responsibilities:
+- Participate in all phases of the Software Development Life Cycle (SDLC): Requirements gathering, Analysis, Design, Implementation, Integration, Testing, and Maintenance.
+- Design and develop web applications using .NET, JavaScript, HTML5, CSS3, and MongoDB.
+- Build and maintain RESTful web services for seamless integration across platforms.
+- Collaborate with cross-functional teams including UI/UX designers to deliver intuitive user interfaces.
+- Implement Agile methodologies in project development and participate in regular sprint reviews and stand-ups.
+- Utilize DevOps tools and practices for Continuous Integration (CI) and Continuous Delivery (CD) pipelines.
+- Conduct manual and automated testing to ensure software quality and performance.
+- Troubleshoot, debug, and enhance existing systems and applications.
+- Manage and maintain systems running on Linux and Windows environments.
+
+Requirements:
+- Strong programming skills in JavaScript, .NET, HTML5, CSS3
+- Experience with RESTful Web Services
+- Familiarity with MongoDB and SQL Server
+- Understanding of UI/UX design principles
+- Experience with Agile development methodologies
+- Knowledge of DevOps concepts such as CI/CD
+- Exposure to software testing practices (manual and automation)
+- Excellent verbal and written communication skills
+- Bachelor’s degree in Computer Science, IT, or a related field
+
+Preferred Qualifications:
+- Certification in RedHat Linux (RHCSA/RHCSE)
+- Training or hands-on experience in ASP.Net Core, C#, ADO.Net, XML
+- Internship or academic project experience in Linux Administration and CRM systems
+- Ability to work independently with high commitment and self-motivation

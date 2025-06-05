@@ -1,0 +1,14 @@
+Title: Java Backend Developer
+
+We are looking for a skilled backend developer with experience in:
+
+- Java
+- Spring Boot
+- Microservices
+- REST APIs
+- SQL
+- Git
+
+Requirements:
+- Bachelor's degree in Computer Science or related field
+- 3+ years of experience with backend systems
