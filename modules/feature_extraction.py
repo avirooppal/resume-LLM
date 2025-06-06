@@ -12,11 +12,11 @@ class FeatureExtractor:
         self.model_name = settings.EMBEDDING_MODEL
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
-            cache_dir="models/pretrained"
+            local_files_only=False
         )
         self.model = AutoModel.from_pretrained(
             self.model_name,
-            cache_dir="models/pretrained"
+            local_files_only=False
         )
         
         # Optimize for CPU and low memory

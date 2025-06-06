@@ -9,6 +9,7 @@ from datetime import datetime
 import re
 from difflib import SequenceMatcher
 from sklearn.metrics.pairwise import cosine_similarity
+from modules.data_loader import data_loader
 
 @dataclass
 class MatchDetails:
@@ -159,57 +160,86 @@ class ResumeDataCleaner:
                         cleaned_work.append(current_job)
                     break
                 
-                if in_experience_section or any(role in line.lower() for role in ['engineer', 'developer', 'analyst', 'manager']):
-                    # Look for job title and company pattern: "Position | Company | Location | Date"
-                    if '|' in line and any(word in line.lower() for word in ['engineer', 'developer', 'analyst', 'manager']):
-                        if current_job:
-                            cleaned_work.append(current_job)
-                        
-                        parts = [p.strip() for p in line.split('|')]
+                # Look for job title and company pattern: "Position | Company | Dates"
+                # Added 'intern' to role list and handle dates from the third part
+                roles = ['engineer', 'developer', 'analyst', 'manager', 'intern']
+                date_pattern = r'(\w{3}\s+\d{4})\s*[-–]\s*(\w{3}\s+\d{4}|\w+\s+\d{4}|Present|Current)'
+
+                if '|' in line and any(role in part.strip().lower() for part in line.split('|')[:2] for role in roles):
+                    if current_job:
+                        cleaned_work.append(current_job)
+                    
+                    parts = [p.strip() for p in line.split('|')]
+                    current_job = {
+                        "company": parts[1] if len(parts) > 1 else "",
+                        "position": parts[0] if len(parts) > 0 else "",
+                        "startDate": "",
+                        "endDate": "",
+                        "highlights": []
+                    }
+                    
+                    # Extract dates from the third part if available
+                    if len(parts) > 2:
+                        date_match = re.search(date_pattern, parts[2])
+                    # Otherwise, try extracting dates from the entire line or the next line
+                    if not date_match:
+                        date_match = re.search(date_pattern, line)
+                    if not date_match and i + 1 < len(lines):
+                        date_match = re.search(date_pattern, lines[i + 1])
+
+                    if date_match:
+                        try:
+                            start_str = date_match.group(1)
+                            end_str = date_match.group(2)
+                            
+                            # Convert to standard format
+                            start_date = datetime.strptime(start_str, '%b %Y').strftime('%Y-%m-%d')
+                            if end_str.lower() in ['present', 'current']:
+                                end_date = datetime.now().strftime('%Y-%m-%d')
+                            else:
+                                end_date = datetime.strptime(end_str, '%b %Y').strftime('%Y-%m-%d')
+                            
+                            current_job["startDate"] = start_date
+                            current_job["endDate"] = end_date
+                        except Exception as e:
+                            print(f"Error parsing dates: {e}")
+                            # Fallback to year extraction if full date parsing fails
+                            years = re.findall(r'\d{4}', line)
+                            if len(years) >= 2:
+                                current_job["startDate"] = f"{years[0]}-01-01"
+                                current_job["endDate"] = f"{years[1]}-12-31"
+
+                # Look for bullet points or achievements belonging to the current job
+                # Only add as highlight if we have a current job and the line is not a job title line
+                elif current_job and (line.startswith('-') or line.startswith('•') or line.startswith('*')): # or in_experience_section
+                    highlight = line[1:].strip() if line[0] in ['-', '•', '*'] else line
+                    if highlight:
+                        current_job["highlights"].append(highlight)
+                # Handle single line job entries without bullet points but within the experience section
+                elif in_experience_section and current_job is None and len(line.split()) > 2 and any(role in line.lower() for role in roles):
+                    # Attempt to parse as a simple job line if no bullet points found yet
+                    parts = [p.strip() for p in re.split(r'\s*\|\s*|\s{2,}|\s+–\s+|- ', line)]
+                    if len(parts) >= 3:
                         current_job = {
-                            "company": parts[1] if len(parts) > 1 else "",
-                            "position": parts[0] if len(parts) > 0 else "",
+                            "company": parts[1],
+                            "position": parts[0],
                             "startDate": "",
                             "endDate": "",
                             "highlights": []
                         }
-                        
-                        # Extract dates from the line or next lines
-                        date_pattern = r'(\w{3}\s+\d{4})\s*[-–]\s*(\w{3}\s+\d{4}|\w+\s+\d{4}|Present|Current)'
                         date_match = re.search(date_pattern, line)
-                        if not date_match and i + 1 < len(lines):
-                            date_match = re.search(date_pattern, lines[i + 1])
-                        
                         if date_match:
                             try:
                                 start_str = date_match.group(1)
                                 end_str = date_match.group(2)
-                                
-                                # Convert to standard format
-                                start_date = datetime.strptime(start_str, '%b %Y').strftime('%Y-%m-%d')
+                                current_job["startDate"] = datetime.strptime(start_str, '%b %Y').strftime('%Y-%m-%d')
                                 if end_str.lower() in ['present', 'current']:
-                                    end_date = datetime.now().strftime('%Y-%m-%d')
+                                    current_job["endDate"] = datetime.now().strftime('%Y-%m-%d')
                                 else:
-                                    end_date = datetime.strptime(end_str, '%b %Y').strftime('%Y-%m-%d')
-                                
-                                current_job["startDate"] = start_date
-                                current_job["endDate"] = end_date
-                            except:
-                                # Fallback to year extraction
-                                years = re.findall(r'\d{4}', line)
-                                if len(years) >= 2:
-                                    current_job["startDate"] = f"{years[0]}-01-01"
-                                    current_job["endDate"] = f"{years[1]}-12-31"
-                    
-                    # Look for bullet points or achievements
-                    elif line.startswith('-') or line.startswith('•') or line.startswith('*'):
-                        if current_job:
-                            highlight = line[1:].strip() if line[0] in ['-', '•', '*'] else line
-                            current_job["highlights"].append(highlight)
-                    elif current_job and not current_job.get("company") and len(line.split()) < 5:
-                        # Might be company name alone
-                        current_job["company"] = line
-            
+                                    current_job["endDate"] = datetime.strptime(end_str, '%b %Y').strftime('%Y-%m-%d')
+                            except Exception as e:
+                                print(f"Error parsing dates from simple job line: {e}")
+
             # Add the last job if exists
             if current_job:
                 cleaned_work.append(current_job)
@@ -273,34 +303,48 @@ class ResumeDataCleaner:
                         cleaned_edu.append(current_edu)
                     break
                 
-                if in_education_section:
-                    # Look for degree patterns
-                    degree_pattern = r'(B\.?Tech|B\.?E\.?|Bachelor|M\.?Tech|M\.?E\.?|Master|PhD|Diploma)\b.*?\b(?:in\s+)?(Computer Science|Engineering|IT|Information Technology)?'
-                    match = re.search(degree_pattern, line, re.IGNORECASE)
-                    if match:
+                # Look for degree patterns and institution/dates separated by | or other separators
+                if in_education_section or any(degree in line.lower() for degree in ['b.s.', 'b.tech', 'm.s.', 'm.tech', 'phd', 'bachelor', 'master']):
+                    degree_pattern = r'(B\.?S\.?|B\.?Tech|B\.?E\.?|Bachelor|M\.?S\.?|M\.?Tech|M\.?E\.?|Master|PhD|Diploma)\b.*?'
+                    date_pattern = r'\d{4}\s*[-–]\s*\d{4}'
+                    
+                    degree_match = re.search(degree_pattern, line, re.IGNORECASE)
+                    if degree_match:
                         if current_edu:
                             cleaned_edu.append(current_edu)
                         
                         current_edu = {
                             "institution": "",
-                            "area": match.group(2) or "Computer Science",
-                            "studyType": match.group(1),
+                            "area": "",
+                            "studyType": degree_match.group(1).strip(),
                             "startDate": "",
                             "endDate": ""
                         }
                         
-                        # Extract institution (usually follows degree)
-                        institution = line[match.end():].split('|')[0].strip()
-                        if institution:
-                            current_edu["institution"] = institution
+                        # Try to extract institution and dates from the rest of the line
+                        rest_of_line = line[degree_match.end():].strip()
+                        parts = [p.strip() for p in re.split(r'\s*\|\s*|\s{2,}|\s+–\s+|- ', rest_of_line)]
                         
-                        # Extract years
-                        years = re.findall(r'\d{4}', line)
-                        if len(years) >= 2:
-                            current_edu["startDate"] = f"{years[0]}-01-01"
-                            current_edu["endDate"] = f"{years[1]}-12-31"
-                        elif len(years) == 1:
-                            current_edu["endDate"] = f"{years[0]}-12-31"
+                        if parts:
+                            # The institution is likely the first part after the degree
+                            current_edu["institution"] = parts[0]
+                            
+                            # Look for dates in any of the parts
+                            for part in parts:
+                                date_match = re.search(date_pattern, part)
+                                if date_match:
+                                    years = re.findall(r'\d{4}', date_match.group(0))
+                                    if len(years) == 2:
+                                        current_edu["startDate"] = f"{years[0]}-01-01"
+                                        current_edu["endDate"] = f"{years[1]}-12-31"
+                                        break # Found dates, no need to check other parts
+                           
+                            # Try to extract area if not already found and it seems like an area
+                            if not current_edu.get("area"):
+                                for part in parts[1:]:
+                                    if len(part.split()) > 1 and re.search(r'science|engineering|technology', part, re.IGNORECASE):
+                                        current_edu["area"] = part
+                                        break
             
             if current_edu:
                 cleaned_edu.append(current_edu)
@@ -449,7 +493,10 @@ class MatchAnalyzer:
             "certificates": 0.03,
             "publications": 0.02
         }
-        
+        self.all_skills = data_loader.get_all_skills()
+        self.all_colleges = data_loader.get_all_colleges()
+        self.all_companies = data_loader.get_all_companies()
+
     def calculate_experience_score(self, resume_exp: str, jd_exp: str | List[str]) -> Tuple[float, float]:
         """Calculate experience matching score"""
         def extract_years(text: str) -> float:
@@ -491,9 +538,13 @@ class MatchAnalyzer:
         return score, resume_years
     
     def calculate_skill_match(self, resume_skills: List[str], jd_skills: List[str], resume_data: Dict[str, Any] = None) -> Tuple[float, List[str], List[str], List[Tuple[str, str, float]]]:
-        """Enhanced skill matching with better semantic similarity"""
+        """Calculate skill match with improved matching using skill database"""
+        # Extract skills from resume if not provided
+        if not resume_skills and resume_data:
+            resume_skills = [skill['name'] for skill in resume_data.get('skills', [])]
+        
+        # Extract skills from JD if not provided
         if not jd_skills and resume_data:
-            # If no JD skills provided, extract from resume summary and work experience
             jd_skills = []
             if isinstance(resume_data.get("basics"), dict) and resume_data["basics"].get("summary"):
                 summary_skills = ResumeDataCleaner.extract_skills_from_text(resume_data["basics"]["summary"])
@@ -506,21 +557,12 @@ class MatchAnalyzer:
                             highlight_skills = ResumeDataCleaner.extract_skills_from_text(str(highlight))
                             jd_skills.extend(highlight_skills)
             
-            # Clean and deduplicate extracted skills
             jd_skills = list(set([s.strip() for s in jd_skills if s.strip()]))
-            
-        matched = []
-        missing = []
-        semantic_matches = []
-        
+
         def normalize_skill(skill: str) -> str:
-            """Normalize skill names for better matching"""
             skill = skill.lower().strip()
-            replacements = {
-                'javascript': 'js',
-                'node.js': 'nodejs',
-                'c++': 'cpp',
-                'c#': 'csharp',
+            # Handle common variations
+            variations = {
                 'rest api': 'rest',
                 'restful': 'rest',
                 'rest apis': 'rest',
@@ -529,91 +571,98 @@ class MatchAnalyzer:
                 'micro service': 'microservices',
                 'micro-services': 'microservices',
                 'cicd': 'ci/cd',
-                'ci/cd': 'ci/cd',
                 'ci-cd': 'ci/cd',
                 'devops': 'ci/cd'
             }
-            for old, new in replacements.items():
+            for old, new in variations.items():
                 if old in skill:
                     skill = skill.replace(old, new)
             return skill
-        
-        def skills_similar(skill1: str, skill2: str) -> float:
-            """Calculate similarity between two skills"""
-            s1, s2 = normalize_skill(skill1), normalize_skill(skill2)
-            
-            # Exact match
-            if s1 == s2:
-                return 1.0
-            
-            # Handle common variations
-            rest_variations = ['rest', 'restful', 'rest api', 'rest apis', 'restful api', 'restful apis']
-            if (s1 in rest_variations and s2 in rest_variations):
-                return 1.0
-            
-            # Handle Spring variations
-            if ('spring' in s1 and 'spring' in s2) or (s1 == 'spring' and 'spring boot' in s2):
-                return 0.95
-            
-            # Handle CI/CD variations
-            cicd_variations = ['ci/cd', 'cicd', 'ci-cd', 'devops']
-            if (s1 in cicd_variations and s2 in cicd_variations):
-                return 1.0
-            
-            # Handle database variations
-            db_variations = {
-                'postgres': ['postgresql', 'postgres db', 'postgresql db'],
-                'mysql': ['mysql db', 'mysql database'],
-                'mongodb': ['mongo', 'mongo db', 'mongodb database']
-            }
-            for db, variations in db_variations.items():
-                if (s1 == db and s2 in variations) or (s2 == db and s1 in variations):
-                    return 0.95
-            
-            # Substring match
-            if s1 in s2 or s2 in s1:
-                return 0.9
-            
-            # Use SequenceMatcher for fuzzy matching
-            return SequenceMatcher(None, s1, s2).ratio()
-        
-        # First clean JD skills (might have parsing artifacts)
-        cleaned_jd_skills = []
-        for skill in jd_skills:
-            skill = skill.strip()
-            if skill and not skill.lower().endswith('requirements:'):
-                cleaned_jd_skills.append(skill)
-        jd_skills = cleaned_jd_skills
-        
-        # Find matches for each JD skill
-        for jd_skill in jd_skills:
-            best_match = None
-            best_score = 0
-            
-            for resume_skill in resume_skills:
-                similarity = skills_similar(jd_skill, resume_skill)
-                if similarity > best_score:
-                    best_score = similarity
-                    best_match = resume_skill
-            
-            if best_score >= 0.85:  # High similarity threshold for direct match
-                matched.append(jd_skill)
-            elif best_score >= 0.6:  # Medium similarity for semantic match
-                semantic_matches.append((best_match, jd_skill, best_score))
+
+        # Normalize skills
+        normalized_resume_skills = [normalize_skill(s) for s in resume_skills]
+        normalized_jd_skills = [normalize_skill(s) for s in jd_skills]
+
+        # Find exact matches
+        matched_skills = []
+        missing_skills = []
+        for jd_skill in normalized_jd_skills:
+            if jd_skill in normalized_resume_skills:
+                matched_skills.append(jd_skill)
             else:
-                missing.append(jd_skill)
-        
-        # Calculate final score
-        total_jd_skills = len(jd_skills)
-        if total_jd_skills == 0:
+                missing_skills.append(jd_skill)
+
+        # Calculate semantic matches
+        semantic_matches = []
+        for jd_skill in missing_skills:
+            for resume_skill in normalized_resume_skills:
+                similarity = self.skills_similar(jd_skill, resume_skill)
+                if similarity > 0.8:  # High similarity threshold
+                    semantic_matches.append((jd_skill, resume_skill, similarity))
+                    if jd_skill not in matched_skills:
+                        matched_skills.append(jd_skill)
+                    if jd_skill in missing_skills:
+                        missing_skills.remove(jd_skill)
+
+        # Calculate score
+        total_skills = len(normalized_jd_skills)
+        if total_skills == 0:
             return 0.0, [], [], []
         
-        direct_matches = len(matched)
-        semantic_match_score = sum(score for _, _, score in semantic_matches)
-        
-        final_score = (direct_matches + semantic_match_score) / total_jd_skills
-        
-        return min(1.0, final_score), matched, missing, semantic_matches
+        score = len(matched_skills) / total_skills
+        return score, matched_skills, missing_skills, semantic_matches
+
+    def calculate_education_score(self, education: List[Dict[str, Any]], jd_qualifications: List[str]) -> float:
+        """Calculate education score using college database"""
+        if not education:
+            return 0.0
+
+        score = 0.0
+        for edu in education:
+            institution = edu.get("institution", "").lower()
+            study_type = edu.get("studyType", "").lower()
+            area = edu.get("area", "").lower()
+            
+            # Special handling for IITs
+            if "iit" in institution:
+                score += 1.0  # IITs are top-tier institutions
+                if "delhi" in institution or "bombay" in institution or "madras" in institution or "kanpur" in institution:
+                    score += 0.2  # Extra points for top IITs
+            
+            # Check if college exists in our database
+            elif institution in self.all_colleges:
+                score += 1.0
+            else:
+                # Try fuzzy matching for colleges
+                for college in self.all_colleges:
+                    if self.skills_similar(institution, college) > 0.8:
+                        score += 1.0
+                        break
+            
+            # Check degree match
+            for qual in jd_qualifications:
+                qual_lower = qual.lower()
+                if "bachelor" in qual_lower and "bachelor" in study_type:
+                    score += 0.2
+                elif "master" in qual_lower and "master" in study_type:
+                    score += 0.2
+                elif "phd" in qual_lower and "phd" in study_type:
+                    score += 0.2
+                elif "degree" in qual_lower and study_type:  # Any degree is good
+                    score += 0.1
+            
+            # Check field of study
+            if area:
+                for qual in jd_qualifications:
+                    qual_lower = qual.lower()
+                    if "computer" in qual_lower and "computer" in area:
+                        score += 0.2
+                    elif "engineering" in qual_lower and "engineering" in area:
+                        score += 0.2
+                    elif "science" in qual_lower and "science" in area:
+                        score += 0.2
+
+        return min(1.0, score)  # Normalize to 0-1
     
     def analyze_match(self, resume_data: Dict[str, Any], jd_data: Dict[str, Any], semantic_score: float) -> MatchResults:
         """Analyze match between resume and job description"""
@@ -714,24 +763,14 @@ class MatchAnalyzer:
                     except Exception as e:
                         print(f"Error parsing dates: {e}")
                         continue
-                        
+            
             # Round to 1 decimal place for display
             resume_exp = f"{round(total_years, 1)} years of experience"
         
         exp_score, resume_years = self.calculate_experience_score(resume_exp, jd_exp)
         
         # Calculate education match
-        edu_score = 0.0
-        if isinstance(resume_data.get("education"), list) and len(resume_data["education"]) > 0:
-            edu_score = 1.0  # Basic score for having education
-            # Bonus if degree matches requirements
-            for qual in jd_qualifications:
-                qual_lower = qual.lower()
-                if "bachelor" in qual_lower or "degree" in qual_lower:
-                    for edu in resume_data["education"]:
-                        if "bachelor" in edu.get("studyType", "").lower():
-                            edu_score = 1.2  # Slight boost for matching degree
-                            break
+        edu_score = self.calculate_education_score(resume_data.get("education", []), jd_qualifications)
         
         # Calculate project match
         project_score = 0.0
@@ -804,6 +843,47 @@ class MatchAnalyzer:
         
         result_dict.update(summary)
         return json.dumps(result_dict, indent=2)
+
+    def skills_similar(self, skill1: str, skill2: str) -> float:
+        """Calculate similarity between two skills"""
+        from difflib import SequenceMatcher
+        
+        s1, s2 = skill1.lower().strip(), skill2.lower().strip()
+        
+        # Exact match
+        if s1 == s2:
+            return 1.0
+        
+        # Handle common variations
+        rest_variations = ['rest', 'restful', 'rest api', 'rest apis', 'restful api', 'restful apis']
+        if (s1 in rest_variations and s2 in rest_variations):
+            return 1.0
+        
+        # Handle Spring variations
+        if ('spring' in s1 and 'spring' in s2) or (s1 == 'spring' and 'spring boot' in s2):
+            return 0.95
+        
+        # Handle CI/CD variations
+        cicd_variations = ['ci/cd', 'cicd', 'ci-cd', 'devops']
+        if (s1 in cicd_variations and s2 in cicd_variations):
+            return 1.0
+        
+        # Handle database variations
+        db_variations = {
+            'postgres': ['postgresql', 'postgres db', 'postgresql db'],
+            'mysql': ['mysql db', 'mysql database'],
+            'mongodb': ['mongo', 'mongo db', 'mongodb database']
+        }
+        for db, variations in db_variations.items():
+            if (s1 == db and s2 in variations) or (s2 == db and s1 in variations):
+                return 0.95
+        
+        # Substring match
+        if s1 in s2 or s2 in s1:
+            return 0.9
+        
+        # Use SequenceMatcher for fuzzy matching
+        return SequenceMatcher(None, s1, s2).ratio()
 
 # Example usage:
 if __name__ == "__main__":

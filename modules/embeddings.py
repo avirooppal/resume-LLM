@@ -12,8 +12,8 @@ class EmbeddingGenerator:
             model_name (str): Name of the transformer model to use.
                              Default is "sentence-transformers/all-MiniLM-L6-v2"
         """
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=False)
+        self.model = AutoModel.from_pretrained(model_name, local_files_only=False)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         

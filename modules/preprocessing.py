@@ -69,7 +69,7 @@ class ResumePreprocessor:
             for page in pdf_reader.pages:
                 text += page.extract_text() + "\n"
         return text
-        
+    
     def _extract_from_docx(self, file_path: str) -> str:
         """Extract text from DOCX file"""
         doc = docx.Document(file_path)
